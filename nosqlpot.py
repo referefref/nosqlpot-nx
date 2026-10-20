@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #NoSQL Honeypot FrameWork Copyright 2015 Francis Alexander
 #This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,7 +19,7 @@ from redispot import redisdeploy
 from couchpot import couchdeploy
 
 def banner():
-	print """
+	print(r"""
 		 /$$   /$$          /$$$$$$$
 		| $$$ | $$        | $$__  $$
 		| $$$$| $$ /$$$$$$| $$  \ $$/$$$$$$
@@ -32,7 +32,7 @@ def banner():
 
 Usage : nopo.py -deploy redis
 
-"""
+""")
 
 def main():
 	port=0

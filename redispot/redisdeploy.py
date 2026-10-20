@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 from twisted.python import log
 from twisted.internet.protocol import Protocol, ServerFactory
 from twisted.internet import reactor
@@ -6,7 +6,7 @@ import redis_protocol
 import sys
 import fakeredis
 import time
-from redisconfig import rediscommands
+from .redisconfig import rediscommands
 
 ### Protocol Implementation of NoPo-Redis Server
 
@@ -18,28 +18,40 @@ time_elapse = time.time()
 
 cmd_count = 0
 
+# Python 3: network data is handled as text (latin-1 maps every byte to one
+# character, as Python 2 str did) and replies are encoded back to bytes.
+ENC = 'latin-1'
+
+# fakeredis 0.x (used by the original) shared one data store between all
+# FakeStrictRedis instances; current fakeredis needs an explicit shared server.
+FAKE_SERVER = fakeredis.FakeServer()
+
 class RedisServer(Protocol):
-    
+
     connectionNb = 0
-    
+
     def __init__(self):
         pass
-    
+
     def connectionMade(self):
         self.connectionNb += 1
-        print "New connection: %s from %s"%(format(self.connectionNb),self.transport.getPeer().host)
+        print("New connection: %s from %s"%(format(self.connectionNb),self.transport.getPeer().host))
 
-    #Handling of Client Requests , Data 
+    def write(self, data):
+        self.transport.write(data.encode(ENC, 'replace'))
+
+    #Handling of Client Requests , Data
     def dataReceived(self, rcvdata):
-        cmd_count = 0   
-        r = fakeredis.FakeStrictRedis()
+        rcvdata = rcvdata.decode(ENC)
+        cmd_count = 0
+        r = fakeredis.FakeStrictRedis(server=FAKE_SERVER, decode_responses=True)
         cmd_count = cmd_count + 1
-        print "original data:"+str(rcvdata),
+        print("original data:"+str(rcvdata), end=' ')
         #print "Data received:", str(redis_protocol.decode(rcvdata))
         try:
             data=redis_protocol.decode(rcvdata)
             command=" ".join(redis_protocol.decode(rcvdata))
-            print str(command)
+            print(str(command))
         except:
             data=rcvdata
             command=rcvdata
@@ -48,45 +60,45 @@ class RedisServer(Protocol):
 
         else:
             if command.lower() == "ping" or rcvdata.find('PING') == 0:
-                snddata = "+PONG\r\n"  
-                #redis_protocol.encode("PONG crime")    
+                snddata = "+PONG\r\n"
+                #redis_protocol.encode("PONG crime")
                 #print redis_protocol.encode("PONG")
-                self.transport.write(snddata) 
+                self.write(snddata)
             elif command.lower() == "config get *" or rcvdata.find('config')==0:
-                self.transport.write(rediscommands.parse_config())
+                self.write(rediscommands.parse_config())
             elif command.lower().startswith('set') and len(data) == 3:
                 if r.set(data[1],data[2]):
-                    self.transport.write("+OK\r\n")
+                    self.write("+OK\r\n")
             elif command.lower().startswith('get') and (len(data) == 2 or len(data) == 1):
                 if r.get(data[1]):
                     s=r.get(data[1])
-                    self.transport.write('+"%s"\r\n'%(s))
+                    self.write('+"%s"\r\n'%(s))
             elif command.lower().startswith('info'):
                 diff = round(time.time() - time_elapse) % 60
-                self.transport.write(rediscommands.parse_info(diff,self.connectionNb,cmd_count))
+                self.write(rediscommands.parse_info(diff,self.connectionNb,cmd_count))
             elif command.lower().startswith('keys') and (len(data) == 2 or len(data) == 1):
                 if r.keys() and (data[1] in r.keys() or data[1] == '*') :
                     keys=r.keys()
-                    self.transport.write(rediscommands.encode_keys(keys))
+                    self.write(rediscommands.encode_keys(keys))
                 elif len(r.keys()) == 0:
-                    self.transport.write("+(empty list or set)\r\n")
+                    self.write("+(empty list or set)\r\n")
                 else:
-                    self.transport.write("-ERR wrong number of arguments for 'keys' command\r\n")
+                    self.write("-ERR wrong number of arguments for 'keys' command\r\n")
             else:
-                self.transport.write("-ERR unknown command '%s'\r\n"%(data[0]))
+                self.write("-ERR unknown command '%s'\r\n"%(data[0]))
     def connectionLost(self, reason):
         self.connectionNb -= 1
-        print "End connection: ", reason.getErrorMessage()
+        print("End connection: ", reason.getErrorMessage())
 
 
 class RedisServerFactory(ServerFactory):
-    
+
     protocol = RedisServer
 
 def reddeploy(port=6109,method='stdout'):
     if method != 'stdout':
-	log.startLogging(open('redis.log', 'a'))  
+        log.startLogging(open('redis.log', 'a'))
     else:
-	log.startLogging(sys.stdout)
+        log.startLogging(sys.stdout)
     reactor.listenTCP(port, RedisServerFactory())
     reactor.run()

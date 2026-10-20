@@ -1,1 +1,1 @@
-from couchdeploy import coudeploy
+from .couchdeploy import coudeploy
